@@ -1,8 +1,13 @@
 from datetime import datetime, timedelta
+from fastapi import Request, HTTPException, status, Depends
+
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from ..config import ALGORITHM, SECRET_KEY, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
-
+from ..db.mysql_bd import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from ..models.user import User
 pwd_context =  CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
@@ -29,3 +34,27 @@ def decoe_access_token(token: str):
         return payload
     except JWTError:
         return None
+    
+async def get_current_user(
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No autenticado")
+
+    try:
+        payload = decoe_access_token(token)  # función para decodificar JWT
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
+
+        res = await db.execute(select(User).where(User.id == user_id))
+        user = res.scalars().first()
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no encontrado")
+
+        return {"id": user.id, "username": user.name, "email": user.email}
+
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")

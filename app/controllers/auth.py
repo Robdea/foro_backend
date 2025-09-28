@@ -1,19 +1,18 @@
 from fastapi import APIRouter, Response, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import timedelta
-from ..db import mysql_bd
-from ..services import auth_services
 
+from ..services.auth_services import AuthService
+from ..utils.service_factory import service_factory
 router = APIRouter(prefix="/auth", tags=["auth"])
+
 
 @router.post("/login")
 async def login(
     resp: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: AsyncSession = Depends(mysql_bd.get_db)
+    service: AuthService = Depends(service_factory(AuthService))
 ):
-    user_data = await auth_services.login(form_data.username, form_data.password, db)
+    user_data = await service.login(form_data.username, form_data.password)
     if not user_data:
         raise HTTPException(status_code=400, detail="Credenciales inválidas")
 
@@ -39,3 +38,9 @@ async def login(
     )
 
     return {"message": "Login exitoso", "user": user_data["user"]}
+
+@router.post("/logout")
+async def logout(resp: Response):
+    resp.delete_cookie("access_token", path="/")
+    resp.delete_cookie("refresh_token", path="/")
+    return {"message": "Sesión cerrada correctamente"}
